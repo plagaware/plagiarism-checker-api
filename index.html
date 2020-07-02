@@ -1,0 +1,198 @@
+<!DOCTYPE HTML>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>PlagAware API Client Demo</title>
+    <!-- Using Semantic UI and JQuery -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.js"></script>
+    <style type="text/css">
+        body {
+            padding-top: 50px;
+        }
+        #poll-status {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Form to submit test text or test file -->
+    <div class="ui raised very padded text container segment">
+        <h1 class="ui header">Welcome to the PlagAware API Client Demo</h1>
+        <p>This simple app is intended to demonstrate the basic usage of PlagAware's plagiarism checker API. For details on available API calls, make sure to check out the full <a href="https://www.plagaware.com/de/all-downloads" target="_blank">API documentation</a>.</p>
+
+        <form id="upload-form" class="ui form" method="POST" action="">
+            <h4 class="ui dividing header">Mandatory Parameters</h4>
+            <div class="field">
+                <label>PlagAware User Code <a href="https://www.plagaware.com/service/api" target="_blank">Need a user code?</a></label>
+                <input id="user-code" type="text" name="UserCode" placeholder="Please enter your private PlagAware user code">
+            </div>
+            <div class="field">
+                <label>Text for Plagiarism Check (Paste text instead of uploading a text file below)</label>
+                <textarea name="TestText" rows="2" placeholder="Paste your text here. This can be left blank if you upload a file."></textarea>
+            </div>
+            <div class="ui horizontal divider">
+                Or
+            </div>
+            <div class="ui field">
+                <label>Text for Plagiarism Check (Upload file instead of pasting test text above)</label>
+                <input name="TestFile" type="file" />
+            </div>
+            <h4 class="ui dividing header">Optional Report Metadata</h4>
+            <div class="field">
+                <label>Report Title</label>
+                <input type="text" name="usercode" placeholder="Please enter an report title. If left blank, title will generated automatically.">
+            </div>
+            <div class="field">
+                <label>Report Project Id</label>
+                <input type="text" name="usercode" placeholder="Please enter an optional valid id of one of your projects.">
+            </div>
+            <h4 class="ui dividing header">Further Options</h4>
+            <div class="ui fields">
+                <div class="field">
+                    <div class="ui toggle checkbox" data-tooltip="Check parameters only, don't acutally schedule a plagiarism check">
+                        <input type="checkbox" name="DryRun">
+                        <label>Dry run only</label>
+                    </div>
+                </div>
+                <div class="field">
+                    <div class="ui toggle checkbox" data-tooltip="Transmit the plagiarism check, but leave it in paused state and don't start it">
+                        <input type="checkbox" name="Hold">
+                        <label>Don't start immediatly</label>
+                    </div>
+                </div>
+                <div class="field">
+                    <div class="ui toggle checkbox" data-tooltip="Copy the text to user's library after plagiarism check has been performed">
+                        <input type="checkbox" name="CopyToLibrary">
+                        <label>Copy text to library</label>
+                    </div>
+                </div>
+            </div>
+            <h4 class="ui dividing header">Submit Plagiarism Check</h4>
+            <div class="ui one column centered padded grid">
+                <button id="submit-button" class="ui fade positive button" tabindex="0">
+                    <div class="visible content">Submit Text for Plagiarism Check</div>
+                </button>
+            </div>
+        </form>
+
+        <!-- Form to display plagiarism check results -->
+        <div id="poll-status">
+            <h4 class="ui dividing header">Waiting for report id #<span id="report-id"></span>...
+                <div id="loader" class="ui mini active inline loader"></div>
+            </h4>
+            <div class="ui info message">
+                Please note that polling for the report status is only second best option. Preferrably, please specify a callback url that will be called by PlagAware once the plagiarism scan has been completed.</p>
+            </div>
+            <h4 class="ui dividing header">Current Status</h4>
+            <p>Report Name: <span id="report-name">n/a</span></p>
+            <p>Report Status: <span id="report-status">n/a</span></p>
+            <p>Scheduled Time: <span id="report-scheduled">n/a</span></p>
+            <p>Started Time: <span id="report-started">n/a</span></p>
+            <p>Completed Time: <span id="report-completed">n/a</span></p>
+
+            <h4 class="ui dividing header">Plagiarism Check Results</h4>
+            <p>Found Sources: <span id="report-sources">n/a</span></p>
+            <p>Preview Link: <span id="report-preview">n/a</span></p>
+            <p>PDF Link: <span id="report-pdf">n/a</span></p>
+
+            <h4 class="ui dividing header">Schedule New Plagiarism Check</h4>
+            <div class="ui one column centered padded grid">
+                <button id="back-button" class="ui fade positive button" tabindex="0">
+                    <div class="visible content">Back</div>
+                </button>
+            </div>
+        </div>
+    </div>
+</body>
+
+<script>
+    var polling = false;
+    jQuery(document).ready(function($) {
+        // Handle "Start Plagiarism Check" button: Fetch data from from and transmit it PlagAware's API
+        $("#upload-form").submit(function(e) {
+            e.preventDefault();
+
+            var formData = new FormData(this);
+            userCode = $("#user-code").val();
+            $.ajax({
+                url: 'https://www.plagaware.com/service/api',
+                type: 'POST',
+                data: formData,
+                cache: false,
+                contentType: false,
+                processData: false
+            }).done(function(data) {
+                try {
+                    response = JSON.parse(data);
+                    $("#upload-form").hide();
+                    $("#poll-status").show();
+                    $("#loader").show();
+                    var reportId = response.Id;
+                    var userCode = $("#user-code").val();
+                    polling = true;
+                    poll(reportId, userCode);
+                } catch (e) {
+                    alert('Call failed: ' + data);
+                }
+            }).fail(function(data) {
+                alert('Call failed: ' + data);
+            });
+        });
+    });
+
+    // Handle "Back" button: Restore submit form and hide results view
+    $("#back-button").click(function(e) {
+        e.preventDefault();
+        polling = false;
+        $("#upload-form").show();
+        $("#poll-status").hide();
+        $("#report-preview").html('n/a');
+        $("#report-pdf").html('n/a');
+    });
+
+    // After plagiarism check has been started, pull and display updates every 5 seconds
+    function poll(reportId, userCode) {
+        $.ajax({
+            url: "https://www.plagaware.com/api/?cmd=GetReportMetadata&reportId=" + reportId + "&UserCode=" + userCode,
+            type: "POST",
+            success: function(response) {
+                try {
+                    $("#report-id").html(reportId);
+                    $("#report-name").html(response.data.Name);
+                    $("#report-status").html(response.data.Status);
+                    $("#report-sources").html(response.data.Sources.length);
+                    $("#report-scheduled").html(response.data.Scheduled);
+                    $("#report-started").html(response.data.Started || 'n/a');
+                    $("#report-completed").html(response.data.Completed || 'n/a');
+                    $("#report-completed").html(response.data.Completed || 'n/a');
+
+                    if (response.data.Completed) {
+                        // Plagiarism check has been completed, hide spinner and display result links
+                        // Instead of polling, a callback url could (and should) by provided in prod scenarios
+                        polling = false;
+                        $("#report-preview").html('<a href="' + response.data.HtmlLink + '" target="_blank">Open Preview</a>');
+                        $("#report-pdf").html('<a href="' + response.data.PdfLink + '" target="_blank">Open PDF</a>');
+                        $("#loader").hide();
+                    } else if (polling) {
+                        // Plagiarism check still runnning, try again in 5 seconds from now
+                        setTimeout(function() {
+                            poll(reportId, userCode)
+                        }, 5000);
+                    }
+                } catch (e) {
+                    polling = false;
+                    $("#loader").hide();
+                    alert('Call failed: ' + e);
+                }
+            },
+            dataType: "json",
+            timeout: 2000
+        });
+    }
+</script>
+
+</html>
